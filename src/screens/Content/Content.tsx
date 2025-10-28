@@ -15,6 +15,11 @@ import { TreasureButton } from "../../components/ui/TreasureButton";
 import { ShareDropdown } from "../../components/ui/ShareDropdown";
 import { ArticleDetailResponse } from "../../types/article";
 import profileDefaultAvatar from "../../assets/images/profile-default.svg";
+import { DEMO_PREMIUM_CONTENT, PremiumContentDemo } from "../../data/premiumContentDemo";
+import { unlockedContentService } from "../../services/unlockedContentService";
+import { PaymentModal, PaymentContent } from "../../components/ui/PaymentModal";
+import { UnlockRecoveryModal } from "../../components/ui/UnlockRecoveryModal";
+import { anonymousUnlockService } from "../../services/anonymousUnlockService";
 
 
 // Image URL validation and fallback function
@@ -51,8 +56,29 @@ export const Content = (): JSX.Element => {
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
 
-  // Use new article detail API hook
-  const { article, loading, error } = useArticleDetail(id || '');
+  // 付费内容相关状态
+  const [premiumContent, setPremiumContent] = useState<PremiumContentDemo | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentContent, setPaymentContent] = useState<PaymentContent | null>(null);
+  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+
+  // 检测是否为付费内容
+  const isPremiumContentId = id && id.startsWith('premium-demo-');
+
+  // Use new article detail API hook - 只在非付费内容时调用
+  const { article, loading, error } = useArticleDetail(!isPremiumContentId ? (id || '') : '');
+
+  // 加载付费内容数据
+  useEffect(() => {
+    if (isPremiumContentId && id) {
+      const foundContent = DEMO_PREMIUM_CONTENT.find(content => content.id === id);
+      if (foundContent) {
+        // 检查解锁状态
+        const isUnlocked = unlockedContentService.isContentUnlocked(id, user?.id?.toString());
+        setPremiumContent({ ...foundContent, isUnlocked });
+      }
+    }
+  }, [id, isPremiumContentId, user?.id]);
 
   // Scroll to top when page loads
   useEffect(() => {
@@ -112,7 +138,7 @@ export const Content = (): JSX.Element => {
     }
   }, [content, article, getArticleLikeState]);
 
-  if (loading) {
+  if (loading && !isPremiumContentId) {
     return <ContentPageSkeleton />;
   }
 
@@ -125,7 +151,7 @@ export const Content = (): JSX.Element => {
     error.includes('404')
   );
 
-  if (error || (!loading && !content)) {
+  if ((error || (!loading && !content)) && !isPremiumContentId) {
     return (
       <div className="min-h-screen w-full flex justify-center overflow-hidden bg-[linear-gradient(0deg,rgba(224,224,224,0.2)_0%,rgba(224,224,224,0.2)_100%),linear-gradient(0deg,rgba(255,255,255,1)_0%,rgba(255,255,255,1)_100%)]">
         <div className="flex mt-0 w-full min-h-screen ml-0 relative flex-col items-start">
@@ -164,6 +190,32 @@ export const Content = (): JSX.Element => {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 处理付费内容未找到的情况
+  if (isPremiumContentId && !premiumContent) {
+    return (
+      <div className="min-h-screen w-full flex justify-center overflow-hidden bg-[linear-gradient(0deg,rgba(224,224,224,0.2)_0%,rgba(224,224,224,0.2)_100%),linear-gradient(0deg,rgba(255,255,255,1)_0%,rgba(255,255,255,1)_100%)]">
+        <div className="flex mt-0 w-full min-h-screen ml-0 relative flex-col items-start">
+          <HeaderSection isLoggedIn={!!user} />
+          <div className="w-full min-h-screen bg-[linear-gradient(0deg,rgba(224,224,224,0.18)_0%,rgba(224,224,224,0.18)_100%),linear-gradient(0deg,rgba(255,255,255,1)_0%,rgba(255,255,255,1)_100%)] flex items-center justify-center pt-[70px] lg:pt-[120px]">
+            <div className="text-center p-8 max-w-md">
+              <div className="mb-6">
+                <span className="text-6xl">💰</span>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">付费内容未找到</h1>
+              <p className="text-gray-600 mb-6">您访问的付费内容可能不存在或已被移除。</p>
+              <Link
+                to="/"
+                className="px-6 py-3 bg-red text-white rounded-full hover:bg-red/90 transition-colors font-medium"
+              >
+                返回首页
+              </Link>
             </div>
           </div>
         </div>
@@ -215,7 +267,10 @@ export const Content = (): JSX.Element => {
 
 
   const handleUserClick = () => {
-    if (!content?.userNamespace) return;
+    if (!content?.userNamespace && !premiumContent) return;
+
+    // 对于付费内容，暂时不支持点击用户头像
+    if (premiumContent) return;
 
     // If logged in and it's the current user's own article, navigate to my treasury page
     if (user && user.id === content.userId) {
@@ -225,6 +280,106 @@ export const Content = (): JSX.Element => {
       navigate(`/u/${content.userNamespace}`);
     }
   };
+
+  // 处理付费内容解锁
+  const handleUnlockPremium = () => {
+    if (!premiumContent) return;
+
+    // 检查是否已解锁
+    if (premiumContent.isUnlocked) {
+      showToast('🎉 该内容已解锁！您可以查看完整内容', 'success');
+      return;
+    }
+
+    // 设置支付信息
+    const payment: PaymentContent = {
+      id: premiumContent.id,
+      title: premiumContent.title,
+      author: premiumContent.userName,
+      price: premiumContent.price,
+      currency: premiumContent.currency,
+      network: premiumContent.currency === 'USDC' ? 'ethereum' : 'ethereum'
+    };
+
+    setPaymentContent(payment);
+    setIsPaymentModalOpen(true);
+  };
+
+  // 处理支付成功
+  const handlePaymentSuccess = (transactionHash: string) => {
+    if (!paymentContent || !premiumContent) return;
+
+    // 为匿名用户生成标识符
+    const userIdentifier = user?.id?.toString() ||
+      `anonymous_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 记录解锁状态（原有服务）
+    unlockedContentService.unlockContent(
+      paymentContent.id,
+      transactionHash,
+      paymentContent.price,
+      paymentContent.currency,
+      paymentContent.network,
+      userIdentifier
+    );
+
+    // 同时使用新的匿名解锁服务（支持更多功能）
+    if (!user) {
+      // 模拟获取钱包地址
+      const walletAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
+
+      anonymousUnlockService.saveLocalUnlock({
+        contentId: paymentContent.id,
+        transactionHash,
+        walletAddress,
+        price: paymentContent.price,
+        currency: paymentContent.currency,
+        network: paymentContent.network,
+        unlockedAt: Date.now()
+      });
+    }
+
+    // 更新本地状态
+    setPremiumContent(prev => prev ? { ...prev, isUnlocked: true } : null);
+
+    showToast(
+      '🎉 支付成功！内容已解锁，您现在可以查看完整内容了',
+      'success',
+      { duration: 5000 }
+    );
+  };
+
+  // 处理支付错误
+  const handlePaymentError = (error: string) => {
+    showToast(`❌ 支付失败: ${error}`, 'error', { duration: 5000 });
+  };
+
+  // 为付费内容创建统一的content对象
+  const displayContent = premiumContent ? {
+    id: premiumContent.id,
+    title: premiumContent.title,
+    description: premiumContent.isUnlocked ? premiumContent.description : premiumContent.previewContent,
+    coverImage: premiumContent.coverImage,
+    url: '#', // 付费内容没有外部链接
+    category: premiumContent.category,
+    categoryApiColor: null,
+    categoryStyle: getCategoryStyle(premiumContent.category),
+    categoryInlineStyle: getCategoryInlineStyle(),
+    userName: premiumContent.userName,
+    userId: premiumContent.userId,
+    userNamespace: null,
+    userAvatar: premiumContent.userAvatar,
+    date: premiumContent.date,
+    treasureCount: premiumContent.treasureCount,
+    visitCount: `${premiumContent.visitCount} Visits`,
+    likes: premiumContent.treasureCount,
+    isLiked: premiumContent.isLiked,
+    website: 'copus.network',
+    isPremium: true,
+    isUnlocked: premiumContent.isUnlocked,
+    price: premiumContent.price,
+    currency: premiumContent.currency
+  } : content;
 
   return (
     <div
@@ -241,11 +396,11 @@ export const Content = (): JSX.Element => {
                 <div className="flex flex-col lg:h-[205px] items-start justify-start relative flex-1 grow gap-6">
                   <span
                     className={`relative flex items-center justify-center w-fit [font-family:'Lato',Helvetica] font-medium text-sm text-center tracking-[0.5px] leading-4 whitespace-nowrap capitalize ${
-                      content.categoryApiColor ? '' : content.categoryStyle.text
+                      displayContent.categoryApiColor ? '' : displayContent.categoryStyle.text
                     }`}
-                    style={content.categoryApiColor ? { color: content.categoryInlineStyle.color } : undefined}
+                    style={displayContent.categoryApiColor ? { color: displayContent.categoryInlineStyle.color } : undefined}
                   >
-                    {content.category}
+                    {displayContent.category}
                   </span>
 
                   <h1
@@ -259,13 +414,13 @@ export const Content = (): JSX.Element => {
                       overflowWrap: 'break-word'
                     }}
                   >
-                    {content.title}
+                    {displayContent.title}
                   </h1>
                 </div>
 
                 <div className="relative w-full lg:w-[364px] h-[205px] rounded-lg aspect-[1.78] bg-[url(https://c.animaapp.com/5EW1c9Rn/img/image@2x.png)] bg-cover bg-[50%_50%]"
                      style={{
-                       backgroundImage: `url(${getValidDetailImageUrl(content.coverImage)})`
+                       backgroundImage: `url(${getValidDetailImageUrl(displayContent.coverImage)})`
                      }}
                 />
               </div>
@@ -284,7 +439,12 @@ export const Content = (): JSX.Element => {
                       whiteSpace: 'pre-wrap'
                     }}
                   >
-                    {content.description}
+                    {displayContent.description}
+                    {premiumContent && !premiumContent.isUnlocked && (
+                      <span className="block mt-4 text-gray-500 italic">
+                        ...完整内容需要付费解锁
+                      </span>
+                    )}
                   </p>
 
                   <div className="flex items-end justify-center self-stretch w-5 relative mt-[-1.00px] [font-family:'Lato',Helvetica] font-bold text-red text-[50px] tracking-[0] leading-[80.0px]">
@@ -295,16 +455,16 @@ export const Content = (): JSX.Element => {
                 <cite
                   className="inline-flex items-center gap-2.5 relative flex-[0_0_auto] not-italic cursor-pointer hover:opacity-80 transition-opacity duration-200"
                   onClick={handleUserClick}
-                  title={`View ${content.userName}'s profile`}
+                  title={`View ${displayContent.userName}'s profile`}
                 >
                   <img
                     className="w-[25px] h-[25px] object-cover relative aspect-[1] rounded-full"
                     alt="Profile image"
-                    src={content.userAvatar}
+                    src={displayContent.userAvatar}
                   />
 
                   <span className="relative w-fit [font-family:'Lato',Helvetica] font-semibold text-dark-grey text-base tracking-[0] leading-[22.4px] whitespace-nowrap hover:text-blue-600 transition-colors duration-200">
-                    {content.userName}
+                    {displayContent.userName}
                   </span>
                 </cite>
               </blockquote>
@@ -312,7 +472,7 @@ export const Content = (): JSX.Element => {
 
             <div className="flex h-[25px] items-center justify-between relative self-stretch w-full mt-[50px]">
               <time className="relative w-fit [font-family:'Lato',Helvetica] font-normal text-dark-grey text-base tracking-[0] leading-[23px] whitespace-nowrap">
-                {content.date}
+                {displayContent.date}
               </time>
 
               <div className="inline-flex items-center gap-5 relative flex-[0_0_auto]">
@@ -373,29 +533,84 @@ export const Content = (): JSX.Element => {
 
               {/* Share dropdown menu */}
               <ShareDropdown
-                title={content.title}
+                title={displayContent.title}
                 url={window.location.href}
               />
             </div>
 
-            <a
-              href={content.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-[15px] px-5 lg:px-[30px] py-2 relative flex-[0_0_auto] bg-red rounded-[100px] border border-solid border-red no-underline"
-            >
-              <span className="relative flex items-center justify-center w-fit mt-[-1.00px] [font-family:'Lato',Helvetica] font-bold text-white text-xl tracking-[0] leading-[30px] whitespace-nowrap">
-                Visit
-              </span>
+            {/* 根据内容类型显示不同的主要按钮 */}
+            {premiumContent ? (
+              // 付费内容显示解锁按钮和恢复选项
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  onClick={handleUnlockPremium}
+                  className={`inline-flex items-center justify-center gap-[15px] px-5 lg:px-[30px] py-2 relative flex-[0_0_auto] rounded-[100px] border border-solid no-underline transition-all ${
+                    premiumContent.isUnlocked
+                      ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 shadow-lg'
+                      : 'bg-orange-600 border-orange-600 text-white hover:bg-orange-700'
+                  }`}
+                >
+                  <span className="relative flex items-center justify-center w-fit mt-[-1.00px] [font-family:'Lato',Helvetica] font-bold text-xl tracking-[0] leading-[30px] whitespace-nowrap">
+                    {premiumContent.isUnlocked ? '✅ 已解锁' : `🔒 解锁 ${premiumContent.price} ${premiumContent.currency}`}
+                  </span>
+                </button>
 
-              <img
-                className="relative w-[31px] h-[14.73px] mr-[-1.00px]"
-                alt="Arrow"
-                src="https://c.animaapp.com/5EW1c9Rn/img/arrow-1.svg"
-              />
-            </a>
+                {/* 已购买恢复链接 - 只在未解锁时显示 */}
+                {!premiumContent.isUnlocked && (
+                  <button
+                    onClick={() => setIsRecoveryModalOpen(true)}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                  >
+                    已购买？恢复解锁状态
+                  </button>
+                )}
+              </div>
+            ) : (
+              // 普通内容显示访问按钮
+              <a
+                href={displayContent.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-[15px] px-5 lg:px-[30px] py-2 relative flex-[0_0_auto] bg-red rounded-[100px] border border-solid border-red no-underline"
+              >
+                <span className="relative flex items-center justify-center w-fit mt-[-1.00px] [font-family:'Lato',Helvetica] font-bold text-white text-xl tracking-[0] leading-[30px] whitespace-nowrap">
+                  Visit
+                </span>
+
+                <img
+                  className="relative w-[31px] h-[14.73px] mr-[-1.00px]"
+                  alt="Arrow"
+                  src="https://c.animaapp.com/5EW1c9Rn/img/arrow-1.svg"
+                />
+              </a>
+            )}
           </div>
         </div>
+
+        {/* Payment Modal for Premium Content */}
+        {paymentContent && (
+          <PaymentModal
+            isOpen={isPaymentModalOpen}
+            content={paymentContent}
+            onClose={() => setIsPaymentModalOpen(false)}
+            onSuccess={handlePaymentSuccess}
+            onError={handlePaymentError}
+          />
+        )}
+
+        {/* Unlock Recovery Modal for Anonymous Users */}
+        {premiumContent && (
+          <UnlockRecoveryModal
+            isOpen={isRecoveryModalOpen}
+            contentId={premiumContent.id}
+            contentTitle={premiumContent.title}
+            onClose={() => setIsRecoveryModalOpen(false)}
+            onRecoverySuccess={() => {
+              // 恢复成功后重新检查解锁状态
+              setPremiumContent(prev => prev ? { ...prev, isUnlocked: true } : null);
+            }}
+          />
+        )}
       </div>
     </div>
   );

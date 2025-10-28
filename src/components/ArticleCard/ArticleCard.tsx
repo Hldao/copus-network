@@ -29,6 +29,12 @@ export interface ArticleData {
   isLiked?: boolean;
   targetUrl?: string;
   website?: string;
+  // 付费内容相关字段
+  isPremium?: boolean;        // 是否为付费内容
+  price?: string;             // 价格字符串 (如 "0.01 ETH")
+  currency?: string;          // 货币类型 (ETH, USDC, MATIC)
+  isUnlocked?: boolean;       // 当前用户是否已解锁
+  previewContent?: string;    // 免费预览内容
 }
 
 // Layout mode
@@ -42,6 +48,7 @@ export interface ActionConfig {
   showVisits?: boolean;
   showBranchIt?: boolean;
   showWebsite?: boolean;
+  showUnlock?: boolean;        // 显示解锁按钮
 }
 
 // Component Props
@@ -54,6 +61,7 @@ export interface ArticleCardProps {
   onEdit?: (articleId: string) => void;
   onDelete?: (articleId: string) => void;
   onUserClick?: (userId: number | undefined, userNamespace?: string) => void;
+  onUnlock?: (articleId: string, price: string, currency: string) => void; // 解锁付费内容回调
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   className?: string;
@@ -65,13 +73,15 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   actions = {
     showTreasure: true,
     showVisits: true,
-    showWebsite: false
+    showWebsite: false,
+    showUnlock: true
   },
   isHovered = false,
   onLike,
   onEdit,
   onDelete,
   onUserClick,
+  onUnlock,
   onMouseEnter,
   onMouseLeave,
   className = ""
@@ -122,6 +132,15 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     e.stopPropagation();
     if (onDelete) {
       onDelete(article.id);
+    }
+  };
+
+  // Handle unlock premium content
+  const handleUnlock = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onUnlock && article.isPremium && article.price && article.currency) {
+      onUnlock(article.id, article.price, article.currency);
     }
   };
 
@@ -424,23 +443,38 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                   aspectRatio: '16 / 9'
                 }}
               >
-                {/* Category badge */}
-                <Badge
-                  variant="outline"
-                  className={`inline-flex items-center gap-[5px] px-2.5 py-2 rounded-[50px] border w-fit ${
-                    article.categoryColor ? '' : `${categoryStyle.border} ${categoryStyle.bg}`
-                  }`}
-                  style={article.categoryColor ? categoryInlineStyle : undefined}
-                >
-                  <span
-                    className={`[font-family:'Lato',Helvetica] font-semibold text-sm tracking-[0] leading-[14px] ${
-                      article.categoryColor ? '' : categoryStyle.text
+                {/* Category badge and premium indicator */}
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={`inline-flex items-center gap-[5px] px-2.5 py-2 rounded-[50px] border w-fit ${
+                      article.categoryColor ? '' : `${categoryStyle.border} ${categoryStyle.bg}`
                     }`}
-                    style={article.categoryColor ? { color: categoryInlineStyle.color } : undefined}
+                    style={article.categoryColor ? categoryInlineStyle : undefined}
                   >
-                    {article.category}
-                  </span>
-                </Badge>
+                    <span
+                      className={`[font-family:'Lato',Helvetica] font-semibold text-sm tracking-[0] leading-[14px] ${
+                        article.categoryColor ? '' : categoryStyle.text
+                      }`}
+                      style={article.categoryColor ? { color: categoryInlineStyle.color } : undefined}
+                    >
+                      {article.category}
+                    </span>
+                  </Badge>
+
+                  {/* Premium badge */}
+                  {article.isPremium && (
+                    <Badge
+                      variant="outline"
+                      className="inline-flex items-center gap-1 px-2.5 py-2 rounded-[50px] border border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50 w-fit"
+                    >
+                      <span className="text-xs">🔒</span>
+                      <span className="[font-family:'Lato',Helvetica] font-semibold text-orange-600 text-sm tracking-[0] leading-[14px]">
+                        {article.price}
+                      </span>
+                    </Badge>
+                  )}
+                </div>
 
                 {/* Website link */}
                 <div className="flex justify-end">
@@ -535,6 +569,21 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Center: Unlock button for premium content */}
+              {article.isPremium && !article.isUnlocked && actions.showUnlock && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[25px] border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 transition-all duration-200"
+                  onClick={handleUnlock}
+                >
+                  <span className="text-sm">🔓</span>
+                  <span className="[font-family:'Lato',Helvetica] font-semibold text-orange-600 text-sm">
+                    解锁全文 - {article.price}
+                  </span>
+                </Button>
+              )}
 
               {/* Right side: Edit and Delete buttons (visible on hover) */}
               {isHovered && (actions.showEdit || actions.showDelete) && (

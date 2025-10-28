@@ -7,6 +7,8 @@ import { useToast } from "../../../../components/ui/toast";
 import { formatDate } from "../../../../utils/categoryStyles";
 import { ArticleCard, ArticleData } from "../../../../components/ArticleCard";
 import profileDefaultAvatar from "../../../../assets/images/profile-default.svg";
+import { unlockedContentService } from "../../../../services/unlockedContentService";
+import { DEMO_PREMIUM_CONTENT } from "../../../../data/premiumContentDemo";
 
 interface TreasuryArticle extends ArticleData {
   // 继承ArticleData，保持类型一致性
@@ -24,6 +26,10 @@ export const TreasuryContentSection = (): JSX.Element => {
     articleCount: 0,
     myArticleLikedCount: 0
   });
+
+  // 标签页状态
+  const [activeTab, setActiveTab] = useState<'liked' | 'unlocked'>('liked');
+  const [unlockedContent, setUnlockedContent] = useState<TreasuryArticle[]>([]);
 
 
   // 获取用户收藏的文章
@@ -124,6 +130,70 @@ export const TreasuryContentSection = (): JSX.Element => {
     };
 
     fetchLikedArticles();
+  }, [user]);
+
+  // 获取已解锁的付费内容
+  useEffect(() => {
+    const loadUnlockedContent = () => {
+      if (!user) {
+        setUnlockedContent([]);
+        return;
+      }
+
+      // 获取用户已解锁的内容
+      const userUnlockedContents = unlockedContentService.getUserUnlockedContents(user.id.toString());
+
+      // 转换为TreasuryArticle格式
+      const unlockedArticles = userUnlockedContents
+        .map(unlockRecord => {
+          // 从演示数据中找到对应的内容
+          const originalContent = DEMO_PREMIUM_CONTENT.find(content => content.id === unlockRecord.contentId);
+          if (!originalContent) return null;
+
+          return {
+            id: originalContent.id,
+            uuid: originalContent.id,
+            title: originalContent.title,
+            description: originalContent.description,
+            coverImage: originalContent.coverImage,
+            category: originalContent.category,
+            categoryColor: null,
+            userName: originalContent.userName,
+            userId: originalContent.userId,
+            userAvatar: originalContent.userAvatar,
+            date: new Date(unlockRecord.unlockedAt).toLocaleDateString(),
+            treasureCount: originalContent.treasureCount,
+            visitCount: `${originalContent.visitCount} Visits`,
+            isLiked: originalContent.isLiked,
+            targetUrl: `/work/${originalContent.id}`, // 指向详情页
+            website: 'copus.network',
+            isPremium: true,
+            isUnlocked: true,
+            price: unlockRecord.price,
+            currency: unlockRecord.currency,
+            unlockDetails: {
+              transactionHash: unlockRecord.transactionHash,
+              unlockedAt: unlockRecord.unlockedAt,
+              network: unlockRecord.network
+            }
+          } as TreasuryArticle & {
+            isPremium: boolean;
+            isUnlocked: boolean;
+            price: string;
+            currency: string;
+            unlockDetails: any;
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          // 按解锁时间倒序排列
+          return (b?.unlockDetails?.unlockedAt || 0) - (a?.unlockDetails?.unlockedAt || 0);
+        }) as TreasuryArticle[];
+
+      setUnlockedContent(unlockedArticles);
+    };
+
+    loadUnlockedContent();
   }, [user]);
 
   // Refresh collection when page becomes visible (user navigates back)
@@ -362,10 +432,54 @@ export const TreasuryContentSection = (): JSX.Element => {
             </div>
           )}
 
+          {/* 标签页导航 */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('liked')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'liked'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                💖 我的收藏
+                {treasuryStats.likedArticleCount > 0 && (
+                  <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full">
+                    {treasuryStats.likedArticleCount}
+                  </span>
+                )}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('unlocked')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'unlocked'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                🔓 已解锁内容
+                {unlockedContent.length > 0 && (
+                  <span className="bg-orange-100 text-orange-600 text-xs px-2 py-0.5 rounded-full">
+                    {unlockedContent.length}
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
+
           <p className="text-gray-600 text-base">
-            {treasuryStats.likedArticleCount > 0
-              ? `共收藏了 ${treasuryStats.likedArticleCount} 篇文章`
-              : '还没有收藏任何文章'
+            {activeTab === 'liked'
+              ? (treasuryStats.likedArticleCount > 0
+                  ? `共收藏了 ${treasuryStats.likedArticleCount} 篇文章`
+                  : '还没有收藏任何文章'
+                )
+              : (unlockedContent.length > 0
+                  ? `已解锁 ${unlockedContent.length} 个付费内容`
+                  : '还没有解锁任何付费内容'
+                )
             }
           </p>
         </div>
@@ -379,26 +493,64 @@ export const TreasuryContentSection = (): JSX.Element => {
         </Button>
       </header>
 
-      {likedArticles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center w-full h-64 text-center">
-          <img
-            className="w-16 h-16 mb-4 opacity-50"
-            alt="Empty treasure"
-            src="https://c.animaapp.com/mft5gmofxQLTNf/img/treasure-icon.svg"
-          />
-          <h3 className="text-xl font-semibold text-gray-600 mb-2">宝藏空空如也</h3>
-          <p className="text-gray-500 mb-4">点赞喜欢的文章，它们就会出现在这里</p>
-          <Link
-            to="/"
-            className="px-4 py-2 bg-yellow text-white rounded-lg hover:bg-yellow/90 transition-colors"
-          >
-            去发现好内容
-          </Link>
-        </div>
+      {/* 根据当前标签页显示不同内容 */}
+      {activeTab === 'liked' ? (
+        // 我的收藏标签页
+        likedArticles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center w-full h-64 text-center">
+            <img
+              className="w-16 h-16 mb-4 opacity-50"
+              alt="Empty treasure"
+              src="https://c.animaapp.com/mft5gmofxQLTNf/img/treasure-icon.svg"
+            />
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">宝藏空空如也</h3>
+            <p className="text-gray-500 mb-4">点赞喜欢的文章，它们就会出现在这里</p>
+            <Link
+              to="/"
+              className="px-4 py-2 bg-yellow text-white rounded-lg hover:bg-yellow/90 transition-colors"
+            >
+              去发现好内容
+            </Link>
+          </div>
+        ) : (
+          <div className="w-full grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-8 px-0 lg:px-5">
+            {likedArticles.map((article) => renderArticleCard(article))}
+          </div>
+        )
       ) : (
-        <div className="w-full grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-8 px-0 lg:px-5">
-          {likedArticles.map((article) => renderArticleCard(article))}
-        </div>
+        // 已解锁内容标签页
+        unlockedContent.length === 0 ? (
+          <div className="flex flex-col items-center justify-center w-full h-64 text-center">
+            <div className="w-16 h-16 mb-4 flex items-center justify-center">
+              <span className="text-4xl opacity-50">🔒</span>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">还没有解锁任何内容</h3>
+            <p className="text-gray-500 mb-4">购买付费内容后，它们就会出现在这里</p>
+            <Link
+              to="/"
+              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+            >
+              探索付费内容
+            </Link>
+          </div>
+        ) : (
+          <div className="w-full grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-8 px-0 lg:px-5">
+            {unlockedContent.map((content) => (
+              <div key={content.id} className="relative">
+                {renderArticleCard(content)}
+                {/* 已解锁标识 */}
+                <div className="absolute top-3 right-3 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm">
+                  <span>✅</span>
+                  <span>已解锁</span>
+                </div>
+                {/* 解锁信息 */}
+                <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-gray-600">
+                  💰 {(content as any).price} {(content as any).currency}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );

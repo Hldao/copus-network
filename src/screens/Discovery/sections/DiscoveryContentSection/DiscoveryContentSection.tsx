@@ -8,12 +8,28 @@ import { useUser } from "../../../../contexts/UserContext";
 import { ArticleCard, ArticleData } from "../../../../components/ArticleCard";
 import { getCategoryStyle, getCategoryInlineStyle, formatDate, formatCount } from "../../../../utils/categoryStyles";
 import profileDefaultAvatar from "../../../../assets/images/profile-default.svg";
+import { DEMO_PREMIUM_CONTENT } from "../../../../data/premiumContentDemo";
+import { PaymentModal, PaymentContent } from "../../../../components/ui/PaymentModal";
+import { x402PaymentService } from "../../../../services/x402PaymentService";
+import { unlockedContentService } from "../../../../services/unlockedContentService";
 
 export const DiscoveryContentSection = (): JSX.Element => {
   const { showToast } = useToast();
   const { user, getArticleLikeState, updateArticleLikeState, toggleLike, syncArticleStates } = useUser();
   const [localArticles, setLocalArticles] = React.useState<Article[]>([]);
+  const [premiumDemos, setPremiumDemos] = React.useState(DEMO_PREMIUM_CONTENT);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
+  const [currentPaymentContent, setCurrentPaymentContent] = React.useState<PaymentContent | null>(null);
   const navigate = useNavigate();
+
+  // 页面加载时检查解锁状态
+  React.useEffect(() => {
+    const updatedDemos = DEMO_PREMIUM_CONTENT.map(demo => {
+      const isUnlocked = unlockedContentService.isContentUnlocked(demo.id, user?.id?.toString());
+      return { ...demo, isUnlocked };
+    });
+    setPremiumDemos(updatedDemos);
+  }, [user?.id]);
 
   // Set test token to ensure API authentication - temporarily disable expired token
   // React.useEffect(() => {
@@ -165,8 +181,24 @@ export const DiscoveryContentSection = (): JSX.Element => {
     }
   }, [articles]); // Remove syncArticleStates dependency to avoid infinite loop
 
+  // 付费内容演示数据配置
+  const premiumContentSettings = {
+    'AI技术深度解析': { isPremium: true, price: '0.01 ETH', currency: 'ETH' },
+    'Web3开发实战指南': { isPremium: true, price: '0.005 ETH', currency: 'ETH' },
+    '区块链投资策略': { isPremium: true, price: '2 USDC', currency: 'USDC' },
+    'React高级模式': { isPremium: true, price: '1.5 USDC', currency: 'USDC' }
+  };
+
   // Transform article data format
   const transformArticleToCardData = (article: Article): ArticleData => {
+    // 检查是否为演示付费内容
+    const premiumSetting = Object.entries(premiumContentSettings).find(([keyword]) =>
+      article.title.includes(keyword)
+    );
+
+    const isPremium = !!premiumSetting;
+    const premiumData = premiumSetting ? premiumSetting[1] : {};
+
     return {
       id: article.id,
       uuid: article.id, // Use id as uuid
@@ -184,7 +216,13 @@ export const DiscoveryContentSection = (): JSX.Element => {
       visitCount: `${article.visitCount || 0} Visits`,
       isLiked: article.isLiked, // Use actual like status returned from server
       targetUrl: article.url,
-      website: article.website
+      website: article.website,
+      // 付费内容相关字段
+      isPremium,
+      price: premiumData.price,
+      currency: premiumData.currency,
+      isUnlocked: false, // 默认未解锁
+      previewContent: isPremium ? `${article.description.slice(0, 100)}...` : undefined
     };
   };
 
@@ -219,6 +257,192 @@ export const DiscoveryContentSection = (): JSX.Element => {
     }
   };
 
+  // Handle unlock premium content
+  const handleUnlock = (articleId: string, price: string, currency: string) => {
+    // 检查是否已经解锁过
+    const isAlreadyUnlocked = unlockedContentService.isContentUnlocked(articleId, user?.id?.toString());
+
+    if (isAlreadyUnlocked) {
+      const unlockDetails = unlockedContentService.getUnlockDetails(articleId, user?.id?.toString());
+      showToast(
+        `🎉 该内容已解锁！您可以直接查看完整内容`,
+        'success',
+        {
+          duration: 4000,
+          action: {
+            label: '查看解锁详情',
+            onClick: () => {
+              if (unlockDetails) {
+                const unlockDate = new Date(unlockDetails.unlockedAt).toLocaleString();
+                const shortHash = unlockDetails.transactionHash.slice(0, 8) + '...' + unlockDetails.transactionHash.slice(-6);
+                showToast(
+                  `✅ 解锁时间: ${unlockDate}\n💰 支付价格: ${unlockDetails.price} ${unlockDetails.currency}\n🔗 交易哈希: ${shortHash}`,
+                  'info',
+                  { duration: 8000 }
+                );
+              }
+            }
+          }
+        }
+      );
+
+      // 直接更新状态为已解锁
+      setPremiumDemos(prev =>
+        prev.map(demo =>
+          demo.id === articleId
+            ? { ...demo, isUnlocked: true }
+            : demo
+        )
+      );
+      return;
+    }
+
+    // 查找对应的内容信息
+    const demoContent = premiumDemos.find(demo => demo.id === articleId);
+    if (!demoContent) return;
+
+    // 设置支付内容信息
+    const paymentContent: PaymentContent = {
+      id: articleId,
+      title: demoContent.title,
+      author: demoContent.userName,
+      price: price,
+      currency: currency,
+      network: currency.includes('USDC') || currency.includes('USDT') ?
+        (currency.includes('.POLY') ? 'polygon' : 'ethereum') : 'ethereum'
+    };
+
+    setCurrentPaymentContent(paymentContent);
+    setIsPaymentModalOpen(true);
+  };
+
+  // 处理支付成功
+  const handlePaymentSuccess = async (transactionHash: string) => {
+    if (!currentPaymentContent) return;
+
+    // 记录解锁状态到持久化存储
+    unlockedContentService.unlockContent(
+      currentPaymentContent.id,
+      transactionHash,
+      currentPaymentContent.price,
+      currentPaymentContent.currency,
+      currentPaymentContent.network,
+      user?.id?.toString()
+    );
+
+    showToast(
+      `🎉 支付成功！内容已解锁，您现在可以查看完整内容了`,
+      'success',
+      {
+        duration: 6000,
+        action: {
+          label: '查看交易详情',
+          onClick: () => {
+            const shortHash = transactionHash.slice(0, 8) + '...' + transactionHash.slice(-6);
+            showToast(
+              `✅ 支付完成\n💰 金额: ${currentPaymentContent.price} ${currentPaymentContent.currency}\n🌐 网络: ${currentPaymentContent.network}\n🔗 交易哈希: ${shortHash}`,
+              'info',
+              { duration: 10000 }
+            );
+          }
+        }
+      }
+    );
+
+    // 更新演示数据状态 - 标记为已解锁
+    setPremiumDemos(prev =>
+      prev.map(demo =>
+        demo.id === currentPaymentContent.id
+          ? { ...demo, isUnlocked: true }
+          : demo
+      )
+    );
+
+    // 更新本地状态 - 标记为已解锁
+    setLocalArticles(prev =>
+      prev.map(article =>
+        article.id === currentPaymentContent.id
+          ? { ...article, isUnlocked: true }
+          : article
+      )
+    );
+  };
+
+  // 处理支付错误
+  const handlePaymentError = (error: string) => {
+    showToast(
+      `❌ 支付失败: ${error}`,
+      'error',
+      {
+        duration: 6000,
+        action: {
+          label: '重新支付',
+          onClick: () => {
+            if (currentPaymentContent) {
+              setIsPaymentModalOpen(true);
+            }
+          }
+        }
+      }
+    );
+  };
+
+  // 关闭支付模态框
+  const handleClosePaymentModal = () => {
+    setIsPaymentModalOpen(false);
+    setCurrentPaymentContent(null);
+  };
+
+  // 渲染演示付费内容卡片
+  const renderPremiumDemoCard = (demo: any, index: number) => {
+    const articleData: ArticleData = {
+      id: demo.id,
+      uuid: demo.id,
+      title: demo.title,
+      description: demo.description,
+      coverImage: demo.coverImage,
+      category: demo.category,
+      userName: demo.userName,
+      userAvatar: demo.userAvatar,
+      userId: demo.userId,
+      date: demo.date,
+      treasureCount: demo.treasureCount,
+      visitCount: `${demo.visitCount} Visits`,
+      isLiked: demo.isLiked,
+      isPremium: demo.isPremium,
+      price: demo.price,
+      currency: demo.currency,
+      isUnlocked: demo.isUnlocked,
+      previewContent: demo.previewContent
+    };
+
+    return (
+      <div key={demo.id}>
+        <ArticleCard
+          article={articleData}
+          layout="discovery"
+          actions={{
+            showTreasure: true,
+            showVisits: true,
+            showUnlock: true
+          }}
+          onLike={(id, isLiked, count) => {
+            // 演示用 - 更新点赞状态
+            setPremiumDemos(prev =>
+              prev.map(d =>
+                d.id === id
+                  ? { ...d, isLiked: !isLiked, treasureCount: isLiked ? count - 1 : count + 1 }
+                  : d
+              )
+            );
+          }}
+          onUserClick={handleUserClick}
+          onUnlock={handleUnlock}
+        />
+      </div>
+    );
+  };
+
   const renderPostCard = (post: Article, index: number) => {
     const articleData = transformArticleToCardData(post);
     const articleLikeState = getArticleLikeState(post.id, post.isLiked, post.treasureCount);
@@ -226,6 +450,12 @@ export const DiscoveryContentSection = (): JSX.Element => {
     // Update article like status
     articleData.isLiked = articleLikeState.isLiked;
     articleData.treasureCount = articleLikeState.likeCount;
+
+    // 检查本地解锁状态
+    const localArticle = localArticles.find(a => a.id === post.id);
+    if (localArticle?.isUnlocked) {
+      articleData.isUnlocked = true;
+    }
 
     // Check if this is the current user's own article
     const isOwnArticle = user && user.id === post.userId;
@@ -237,10 +467,12 @@ export const DiscoveryContentSection = (): JSX.Element => {
           layout="discovery"
           actions={{
             showTreasure: true,
-            showVisits: true
+            showVisits: true,
+            showUnlock: true
           }}
           onLike={handleLike}
           onUserClick={handleUserClick}
+          onUnlock={handleUnlock}
         />
       </div>
     );
@@ -285,6 +517,52 @@ export const DiscoveryContentSection = (): JSX.Element => {
 
   return (
     <main className="flex flex-col items-start gap-10 py-0 relative flex-1">
+      {/* x402 Protocol Banner */}
+      <section className="w-full bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 text-white rounded-lg p-6 shadow-lg border-2 border-orange-400">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-3xl">🔗</span>
+              <div>
+                <h2 className="text-xl font-bold">x402 开放支付协议</h2>
+                <p className="text-orange-100 text-sm">基于HTTP的内容付费标准 - 安全、快速、去中心化</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <div className="text-sm text-orange-100">支持的网络</div>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className="px-2 py-1 bg-white/20 rounded text-xs">⟠ ETH</span>
+                <span className="px-2 py-1 bg-white/20 rounded text-xs">🔷 MATIC</span>
+                <span className="px-2 py-1 bg-white/20 rounded text-xs">🔵 ARB</span>
+                <span className="px-2 py-1 bg-white/20 rounded text-xs">🔷 BASE</span>
+              </div>
+            </div>
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+              <span className="text-2xl">⚡</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/20">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="flex items-center space-x-2">
+              <span>🛡️</span>
+              <span>安全加密交易</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span>⚡</span>
+              <span>即时内容解锁</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span>🌐</span>
+              <span>跨链兼容性</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Welcome Guide Bar - Display different content based on login status */}
       {showWelcomeGuide && (
         <section className="pl-4 sm:pl-[30px] pr-4 py-4 sm:py-[30px] rounded-lg border-l-[3px] [border-left-style:solid] border-red shadow-[1px_1px_10px_#c5c5c5] bg-[linear-gradient(0deg,rgba(255,255,255,1)_0%,rgba(255,255,255,1)_100%)] flex items-start gap-[15px] relative w-full min-h-fit overflow-hidden">
@@ -325,9 +603,25 @@ export const DiscoveryContentSection = (): JSX.Element => {
         </section>
       )}
 
+      {/* Premium Content Demo Section */}
+      <section className="w-full px-2.5 lg:px-0">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">🎯 付费内容演示</h2>
+          <p className="text-gray-600 text-sm">体验 x402 支付协议的付费内容功能</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-4 lg:gap-8">
+          {premiumDemos.map((demo, index) => renderPremiumDemoCard(demo, index))}
+        </div>
+      </section>
+
       {/* Content Cards Section - Responsive Grid Layout */}
-      <section className="w-full pt-0 pb-[30px] min-h-screen px-2.5 lg:px-0 grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-4 lg:gap-8">
-        {localArticles.map((post, index) => renderPostCard(post, index))}
+      <section className="w-full pt-0 pb-[30px] min-h-screen px-2.5 lg:px-0">
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">📚 发现更多内容</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-4 lg:gap-8">
+          {localArticles.map((post, index) => renderPostCard(post, index))}
+        </div>
       </section>
 
       {/* Loading indicator */}
@@ -342,6 +636,17 @@ export const DiscoveryContentSection = (): JSX.Element => {
         <div className="flex justify-center items-center py-8">
           <div className="text-gray-500">You've reached the bottom! No more content to load.</div>
         </div>
+      )}
+
+      {/* x402 Payment Modal */}
+      {currentPaymentContent && (
+        <PaymentModal
+          isOpen={isPaymentModalOpen}
+          content={currentPaymentContent}
+          onClose={handleClosePaymentModal}
+          onSuccess={handlePaymentSuccess}
+          onError={handlePaymentError}
+        />
       )}
     </main>
   );

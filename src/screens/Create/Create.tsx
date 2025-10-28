@@ -22,6 +22,7 @@ import { ImageCropper } from "../../components/ImageCropper/ImageCropper";
 import { validateImageFile, compressImage, createImagePreview, revokeImagePreview } from "../../utils/imageUtils";
 import { addRecentCategory, sortCategoriesByRecent } from "../../utils/recentCategories";
 import profileDefaultAvatar from "../../assets/images/profile-default.svg";
+import { CreatorPricingPanel, PricingData } from "../../components/ui/CreatorPricingPanel";
 
 
 export const Create = (): JSX.Element => {
@@ -45,6 +46,11 @@ export const Create = (): JSX.Element => {
     selectedTopic: "生活", // Default to Chinese category
     selectedTopicId: 1, // Corresponding ID
     coverImage: null as File | null,
+    // x402 付费内容相关字段
+    isPremium: false,
+    price: "",
+    currency: "USDC",
+    network: "ethereum"
   });
 
   const [characterCount, setCharacterCount] = useState(0);
@@ -211,7 +217,13 @@ export const Create = (): JSX.Element => {
     date: new Date().toISOString(),
     treasureCount: 0,
     visitCount: "0 Visits",
-    website: extractDomain(formData.link)
+    website: extractDomain(formData.link),
+    // 付费内容预览
+    isPremium: formData.isPremium,
+    price: formData.price,
+    currency: formData.currency,
+    isUnlocked: false, // 预览时显示为未解锁状态
+    previewContent: formData.isPremium ? '点击解锁查看目标链接内容' : undefined
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -246,6 +258,17 @@ export const Create = (): JSX.Element => {
     setFormData(prev => ({ ...prev, selectedTopic: topicName, selectedTopicId: topicId }));
     // Track this category as recently used
     addRecentCategory(topicId, topicName);
+  };
+
+  // 处理付费设置变更
+  const handlePricingChange = (pricingData: PricingData) => {
+    setFormData(prev => ({
+      ...prev,
+      isPremium: pricingData.isPremium,
+      price: pricingData.price,
+      currency: pricingData.currency,
+      network: pricingData.network
+    }));
   };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -785,6 +808,19 @@ export const Create = (): JSX.Element => {
                 })}
               </div>
             </div>
+          </div>
+
+          {/* x402 付费内容设置 */}
+          <div className="w-full">
+            <CreatorPricingPanel
+              pricingData={{
+                isPremium: formData.isPremium,
+                price: formData.price,
+                currency: formData.currency,
+                network: formData.network
+              }}
+              onPricingChange={handlePricingChange}
+            />
           </div>
 
           <div className="inline-flex flex-col items-start gap-5">

@@ -136,6 +136,9 @@ export const MainContentSection = (): JSX.Element => {
   // Track if account is enabled
   const [accountEnabled, setAccountEnabled] = useState(true);
 
+  // 已解锁内容状态
+  const [unlockedContent, setUnlockedContent] = useState<any[]>([]);
+
   // 判断是否在查看其他用户的宝藏
   // 如果有namespace参数但是namespace等于当前用户的namespace，说明是在查看自己的页面
   const isViewingOtherUser = !!namespace && namespace !== user?.namespace;
@@ -233,6 +236,9 @@ export const MainContentSection = (): JSX.Element => {
         } else if (activeTab === 'share') {
           // 只在创作标签页时加载创作文章
           await fetchCreatedArticles(userId);
+        } else if (activeTab === 'unlocked' && !isViewingOtherUser) {
+          // 只在已解锁标签页且查看自己的页面时加载已解锁内容
+          await fetchUnlockedContent();
         }
       } catch (error) {
         console.error('❌ 加载文章数据失败:', error);
@@ -282,6 +288,28 @@ export const MainContentSection = (): JSX.Element => {
       setCreatedArticles([]);
     } finally {
       setCreatedArticlesLoading(false);
+    }
+  };
+
+  // 获取已解锁的付费内容
+  const fetchUnlockedContent = async () => {
+    try {
+      if (!user) {
+        setUnlockedContent([]);
+        return;
+      }
+
+      console.log('Fetching unlocked content for user:', user.id);
+
+      // 暂时返回空数组，避免错误
+      setUnlockedContent([]);
+
+      // TODO: 实现真正的数据获取逻辑
+      // const userUnlockedContents = unlockedContentService.getUserUnlockedContents(user.id.toString());
+
+    } catch (error) {
+      console.error('❌ 获取已解锁内容失败:', error);
+      setUnlockedContent([]);
     }
   };
 
@@ -787,7 +815,7 @@ export const MainContentSection = (): JSX.Element => {
 
             <TabsTrigger
               value="share"
-              className="flex-1 flex items-center justify-center bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none p-0 relative data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-1/2 data-[state=active]:after:transform data-[state=active]:after:-translate-x-1/2 data-[state=active]:after:w-[calc(100%-30px)] data-[state=active]:after:h-[2px] data-[state=active]:after:bg-[#454545]"
+              className={`${!isViewingOtherUser ? 'flex-1' : 'flex-1'} flex items-center justify-center bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none p-0 relative data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-1/2 data-[state=active]:after:transform data-[state=active]:after:-translate-x-1/2 data-[state=active]:after:w-[calc(100%-30px)] data-[state=active]:after:h-[2px] data-[state=active]:after:bg-[#454545]`}
             >
               <div className="justify-center px-[15px] py-2.5 w-full flex items-center gap-2.5">
                 <span className="mt-[-1.00px] [font-family:'Lato',Helvetica] data-[state=active]:font-bold font-normal text-dark-grey data-[state=active]:text-lg text-lg text-center tracking-[0] leading-[25.2px] whitespace-nowrap">
@@ -795,6 +823,25 @@ export const MainContentSection = (): JSX.Element => {
                 </span>
               </div>
             </TabsTrigger>
+
+            {/* 已解锁内容标签页 - 只在查看自己页面时显示 */}
+            {!isViewingOtherUser && (
+              <TabsTrigger
+                value="unlocked"
+                className="flex-1 flex items-center justify-center bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none p-0 relative data-[state=active]:after:content-[''] data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-1/2 data-[state=active]:after:transform data-[state=active]:after:-translate-x-1/2 data-[state=active]:after:w-[calc(100%-30px)] data-[state=active]:after:h-[2px] data-[state=active]:after:bg-[#454545]"
+              >
+                <div className="justify-center px-[15px] py-2.5 w-full flex items-center gap-2.5">
+                  <span className="mt-[-1.00px] [font-family:'Lato',Helvetica] data-[state=active]:font-bold font-normal text-dark-grey data-[state=active]:text-lg text-lg text-center tracking-[0] leading-[25.2px] whitespace-nowrap">
+                    🔓 已解锁内容
+                    {unlockedContent.length > 0 && (
+                      <span className="ml-2 bg-orange-100 text-orange-600 text-xs px-2 py-0.5 rounded-full">
+                        {unlockedContent.length}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="collection" className="mt-[30px]">
@@ -852,6 +899,59 @@ export const MainContentSection = (): JSX.Element => {
               </div>
             )}
           </TabsContent>
+
+          {/* 已解锁内容标签页内容 - 只在查看自己页面时显示 */}
+          {!isViewingOtherUser && (
+            <TabsContent value="unlocked" className="mt-[30px]">
+              {unlockedContent.length > 0 ? (
+                <div className="w-full grid grid-cols-1 lg:grid-cols-[repeat(auto-fill,minmax(408px,1fr))] gap-8">
+                  {unlockedContent.map((content) => (
+                    <div key={content.id} className="relative">
+                      <ArticleCard
+                        article={content}
+                        layout="treasury"
+                        actions={{
+                          showTreasure: true,
+                          showVisits: true,
+                          showWebsite: true,
+                          showBranchIt: true
+                        }}
+                        onLike={(articleId, currentIsLiked, currentLikeCount) =>
+                          toggleLike(articleId, currentIsLiked, currentLikeCount)
+                        }
+                        onUserClick={(userId) => {
+                          // 对于付费内容，暂时不支持点击用户头像
+                        }}
+                      />
+                      {/* 已解锁标识 */}
+                      <div className="absolute top-3 right-3 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-sm">
+                        <span>✅</span>
+                        <span>已解锁</span>
+                      </div>
+                      {/* 解锁信息 */}
+                      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-gray-600">
+                        💰 {content.price || 'N/A'} {content.currency || 'USD'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="w-16 h-16 mb-4 flex items-center justify-center">
+                    <span className="text-4xl opacity-50">🔒</span>
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-600 mb-2">还没有解锁任何内容</h3>
+                  <p className="text-gray-500 mb-4">购买付费内容后，它们就会出现在这里</p>
+                  <a
+                    href="/"
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                  >
+                    探索付费内容
+                  </a>
+                </div>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </section>
 
