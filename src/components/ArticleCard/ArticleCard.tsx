@@ -48,7 +48,6 @@ export interface ActionConfig {
   showVisits?: boolean;
   showBranchIt?: boolean;
   showWebsite?: boolean;
-  showUnlock?: boolean;        // 显示解锁按钮
 }
 
 // Component Props
@@ -61,7 +60,6 @@ export interface ArticleCardProps {
   onEdit?: (articleId: string) => void;
   onDelete?: (articleId: string) => void;
   onUserClick?: (userId: number | undefined, userNamespace?: string) => void;
-  onUnlock?: (articleId: string, price: string, currency: string) => void; // 解锁付费内容回调
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   className?: string;
@@ -73,15 +71,13 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
   actions = {
     showTreasure: true,
     showVisits: true,
-    showWebsite: false,
-    showUnlock: true
+    showWebsite: false
   },
   isHovered = false,
   onLike,
   onEdit,
   onDelete,
   onUserClick,
-  onUnlock,
   onMouseEnter,
   onMouseLeave,
   className = ""
@@ -135,14 +131,6 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
     }
   };
 
-  // Handle unlock premium content
-  const handleUnlock = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onUnlock && article.isPremium && article.price && article.currency) {
-      onUnlock(article.id, article.price, article.currency);
-    }
-  };
 
   // Handle image preview
   const handleImagePreview = (imageUrl: string, alt: string) => (e: React.MouseEvent) => {
@@ -570,20 +558,6 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({
                 )}
               </div>
 
-              {/* Center: Unlock button for premium content */}
-              {article.isPremium && !article.isUnlocked && actions.showUnlock && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-[25px] border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50 hover:from-orange-100 hover:to-amber-100 transition-all duration-200"
-                  onClick={handleUnlock}
-                >
-                  <span className="text-sm">🔓</span>
-                  <span className="[font-family:'Lato',Helvetica] font-semibold text-orange-600 text-sm">
-                    解锁全文 - {article.price}
-                  </span>
-                </Button>
-              )}
 
               {/* Right side: Edit and Delete buttons (visible on hover) */}
               {isHovered && (actions.showEdit || actions.showDelete) && (

@@ -30,6 +30,7 @@ interface UserContextValue {
   isLoggedIn: boolean;
   loading: boolean;
   login: (userData: User, token?: string) => void;
+  loginWithWallet: (walletAddress: string, signature: string, message: string) => Promise<boolean>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
   updateUserNamespace: (namespace: string) => Promise<boolean>;
@@ -115,6 +116,99 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // 钱包登录方法 - 使用现有的AuthService
+  const loginWithWallet = async (walletAddress: string, signature: string, message: string): Promise<boolean> => {
+    try {
+      setLoading(true);
+
+      console.log('🔐 开始钱包登录:', {
+        walletAddress: walletAddress,
+        signature: signature.substring(0, 20) + '...',
+        messageLength: message.length
+      });
+
+      // 检查是否是开发环境，使用 mock 登录
+      const isDevelopment = import.meta.env.VITE_APP_ENV === 'development';
+
+      if (isDevelopment) {
+        console.log('🧪 开发环境：使用 Mock 钱包登录');
+        return await mockWalletLogin(walletAddress);
+      }
+
+      // 生产环境使用真实的AuthService
+      const loginResult = await AuthService.metamaskLogin(walletAddress, signature, false);
+
+      console.log('📝 钱包登录API响应:', loginResult);
+
+      if (loginResult && loginResult.token) {
+        console.log('✅ 获取到token，开始获取用户信息');
+
+        // 获取用户信息
+        await fetchUserInfo(loginResult.token);
+
+        console.log('🎉 钱包登录成功', {
+          namespace: loginResult.namespace,
+          walletAddress: walletAddress,
+        });
+
+        return true;
+      } else {
+        console.error('❌ 登录失败：未获取到有效token', loginResult);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ 钱包登录异常:', {
+        error: error,
+        message: error instanceof Error ? error.message : '未知错误',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mock 钱包登录（开发环境使用）
+  const mockWalletLogin = async (walletAddress: string): Promise<boolean> => {
+    try {
+      // 模拟网络延迟
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 模拟用户数据
+      const mockUser: User = {
+        id: Math.floor(Math.random() * 10000),
+        username: `User${walletAddress.slice(-6)}`,
+        email: '',
+        bio: '通过钱包登录的用户',
+        coverUrl: '',
+        faceUrl: '',
+        namespace: `user${walletAddress.slice(-6)}`,
+        walletAddress: walletAddress,
+        avatar: '',
+      };
+
+      const mockToken = `mock_token_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // 设置用户状态
+      setUser(mockUser);
+      setToken(mockToken);
+
+      // 保存到localStorage
+      localStorage.setItem('copus_user', JSON.stringify(mockUser));
+      localStorage.setItem('copus_token', mockToken);
+
+      console.log('🎉 Mock 钱包登录成功', {
+        username: mockUser.username,
+        walletAddress: mockUser.walletAddress,
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Mock 钱包登录失败:', error);
+      return false;
+    }
+  };
+
   const logout = useCallback(async () => {
     try {
       // Call logout API to notify backend
@@ -123,6 +217,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error('Logout API call failed:', error);
       // Continue with local logout even if API call fails
     } finally {
+
       // Clear local state and storage
       setUser(null);
       setToken(null);
@@ -359,6 +454,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isLoggedIn: !!user,
         loading,
         login,
+        loginWithWallet,
         logout,
         updateUser,
         updateUserNamespace,

@@ -4,6 +4,8 @@ import { Card, CardContent } from './card';
 import { Input } from './input';
 import { useToast } from './toast';
 import { anonymousUnlockService } from '../../services/anonymousUnlockService';
+import { useWallet } from '../../hooks/useWallet';
+import { WalletConnectionModal } from './WalletConnectionModal';
 
 export interface UnlockRecoveryModalProps {
   isOpen: boolean;
@@ -26,36 +28,44 @@ export const UnlockRecoveryModal: React.FC<UnlockRecoveryModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [transactionHash, setTransactionHash] = useState('');
   const [importData, setImportData] = useState('');
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const { showToast } = useToast();
+  const { isConnected, account } = useWallet();
 
   if (!isOpen) return null;
 
   // 连接钱包并验证
   const handleWalletRecovery = async () => {
+    if (!isConnected || !account) {
+      setShowWalletModal(true);
+      return;
+    }
+
     setLoading(true);
     try {
-      // 模拟钱包连接
-      if (window.ethereum) {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        const walletAddress = accounts[0];
+      const isUnlocked = await anonymousUnlockService.isContentUnlocked(contentId, account.address);
 
-        const isUnlocked = await anonymousUnlockService.isContentUnlocked(contentId, walletAddress);
-
-        if (isUnlocked) {
-          showToast('🎉 解锁状态已恢复！', 'success');
-          onRecoverySuccess();
-          onClose();
-        } else {
-          showToast('该钱包地址没有购买过此内容', 'error');
-        }
+      if (isUnlocked) {
+        showToast('🎉 解锁状态已恢复！', 'success');
+        onRecoverySuccess();
+        onClose();
       } else {
-        showToast('请安装MetaMask钱包', 'error');
+        showToast('该钱包地址没有购买过此内容', 'error');
       }
     } catch (error) {
-      showToast('钱包连接失败', 'error');
+      showToast('验证失败，请重试', 'error');
     } finally {
       setLoading(false);
     }
+  };
+
+  // 钱包连接成功后的回调
+  const handleWalletConnected = () => {
+    setShowWalletModal(false);
+    // 连接成功后自动进行验证
+    setTimeout(() => {
+      handleWalletRecovery();
+    }, 500);
   };
 
   // 通过交易哈希恢复
@@ -176,12 +186,39 @@ export const UnlockRecoveryModal: React.FC<UnlockRecoveryModalProps> = ({
                 </p>
               </div>
 
+              {/* 钱包连接状态显示 */}
+              {isConnected && account ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="font-medium text-green-800">钱包已连接</span>
+                      </div>
+                      <p className="text-green-700 text-sm font-mono">
+                        {account.address.slice(0, 8)}...{account.address.slice(-6)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-green-700 text-sm">余额</p>
+                      <p className="text-green-800 font-medium">{account.balance} ETH</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-gray-600 text-sm text-center">
+                    🔗 尚未连接钱包
+                  </p>
+                </div>
+              )}
+
               <Button
                 onClick={handleWalletRecovery}
                 disabled={loading}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {loading ? '验证中...' : '🦊 连接钱包验证'}
+                {loading ? '验证中...' : (isConnected ? '🔍 验证购买记录' : '🦊 连接钱包')}
               </Button>
             </div>
           )}
@@ -271,6 +308,13 @@ export const UnlockRecoveryModal: React.FC<UnlockRecoveryModalProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* 钱包连接模态框 */}
+      <WalletConnectionModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onSuccess={handleWalletConnected}
+      />
     </div>
   );
 };

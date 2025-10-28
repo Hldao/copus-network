@@ -4,6 +4,7 @@ import { HeaderSection } from "../../components/shared/HeaderSection/HeaderSecti
 import { SideMenuSection } from "../../components/shared/SideMenuSection/SideMenuSection";
 import { DiscoveryContentSection } from "./sections/DiscoveryContentSection/DiscoveryContentSection";
 import { useUser } from "../../contexts/UserContext";
+import { UserStatusBar } from "../../components/ui/UserStatusBar";
 
 export const Discovery = (): JSX.Element => {
   const { isLoggedIn } = useUser();
@@ -24,6 +25,9 @@ export const Discovery = (): JSX.Element => {
       <HeaderSection isLoggedIn={isLoggedIn} />
       <SideMenuSection activeItem="discovery" />
       <div className="lg:ml-[360px] lg:mr-[40px] min-h-screen overflow-y-auto pt-[70px] lg:pt-[120px] pb-[100px] overflow-x-visible">
+        <div className="mb-6">
+          <UserStatusBar />
+        </div>
         <DiscoveryContentSection />
       </div>
     </div>

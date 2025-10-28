@@ -20,6 +20,7 @@ import { unlockedContentService } from "../../services/unlockedContentService";
 import { PaymentModal, PaymentContent } from "../../components/ui/PaymentModal";
 import { UnlockRecoveryModal } from "../../components/ui/UnlockRecoveryModal";
 import { anonymousUnlockService } from "../../services/anonymousUnlockService";
+import { backgroundMonitorService } from "../../services/backgroundMonitorService";
 
 
 // Image URL validation and fallback function
@@ -84,6 +85,32 @@ export const Content = (): JSX.Element => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  // 初始化后台监控服务
+  useEffect(() => {
+    backgroundMonitorService.initialize();
+
+    // 监听解锁状态变化
+    const handleUnlockStateChanged = (event: CustomEvent) => {
+      const { contentId } = event.detail;
+
+      // 如果当前页面就是被解锁的内容，刷新状态
+      if (contentId === id && isPremiumContentId) {
+        const foundContent = DEMO_PREMIUM_CONTENT.find(content => content.id === id);
+        if (foundContent) {
+          const isUnlocked = anonymousUnlockService.isContentUnlocked(id, user?.id?.toString());
+          setPremiumContent({ ...foundContent, isUnlocked });
+          showToast('🎉 内容解锁成功！', 'success');
+        }
+      }
+    };
+
+    window.addEventListener('unlockStateChanged', handleUnlockStateChanged as EventListener);
+
+    return () => {
+      window.removeEventListener('unlockStateChanged', handleUnlockStateChanged as EventListener);
+    };
+  }, [id, isPremiumContentId, user?.id]);
 
   // Debug: Log article data to check arChainId
   useEffect(() => {
