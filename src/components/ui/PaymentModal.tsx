@@ -134,10 +134,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setPaymentAddress('');
       setGasEstimate(null);
       setUserIdentifier('');
-
-      // 生成匿名用户标识符
-      const anonymousId = `anonymous_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setUserIdentifier(anonymousId);
     }
   }, [isOpen]);
 
@@ -182,6 +178,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       // 连接钱包
       const account = await walletService.connectWallet(wallet.id);
       setConnectedAccount(account);
+      setUserIdentifier(account.address); // 使用钱包地址作为用户标识符
 
       // 根据货币类型自动选择网络
       const defaultNetwork = content.currency === 'ETH'
@@ -289,20 +286,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         network: content.network || 'ethereum',
       });
 
-      // 保存到本地存储
-      const unlockRecord = {
-        contentId: content.id,
-        transactionHash,
-        walletAddress: connectedAccount?.address || '',
-        price: content.price,
-        currency: content.currency,
-        network: content.network || 'ethereum',
-        unlockedAt: Date.now(),
-      };
-
-      // 保存匿名解锁记录
-      const { anonymousUnlockService } = await import('../../services/anonymousUnlockService');
-      anonymousUnlockService.saveLocalUnlock(unlockRecord);
+      // 购买记录已通过钱包登录自动保存
 
       setCurrentStep('success');
 

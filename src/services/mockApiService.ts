@@ -110,48 +110,6 @@ class MockApiService {
     };
   }
 
-  // 模拟交易哈希恢复
-  async restoreUnlockByTransaction(params: {
-    contentId: string;
-    transactionHash: string;
-  }): Promise<MockPaymentResponse> {
-    await this.delay(1000, 2500);
-
-    // 验证交易哈希格式
-    if (!PAYMENT_CONFIG.SECURITY.VALIDATION.TRANSACTION_HASH_REGEX.test(params.transactionHash)) {
-      return {
-        success: false,
-        error: '无效的交易哈希格式',
-      };
-    }
-
-    // 30% 概率找不到交易
-    if (Math.random() < 0.3) {
-      return {
-        success: false,
-        error: '未找到相关交易记录，请检查交易哈希是否正确',
-      };
-    }
-
-    // 模拟区块链查询结果
-    const mockTransactionData = {
-      transactionHash: params.transactionHash,
-      walletAddress: '0x742C3eF46E1c5D7c2C5d5F7D3E8F9B1a2A3B4C5D',
-      price: '0.001',
-      currency: 'ETH',
-      network: 'ethereum',
-      blockNumber: 18500000 + Math.floor(Math.random() * 100000),
-      unlockedAt: Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000), // 过去7天内
-    };
-
-    return {
-      success: true,
-      data: {
-        valid: true,
-        record: mockTransactionData,
-      },
-    };
-  }
 
   // 模拟批量解锁状态查询
   async batchUnlockStatus(params: {

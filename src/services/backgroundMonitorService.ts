@@ -1,5 +1,4 @@
 import { realPaymentService } from './realPaymentService';
-import { anonymousUnlockService } from './anonymousUnlockService';
 
 interface PendingTransaction {
   contentId: string;
@@ -126,24 +125,13 @@ class BackgroundMonitorService {
       await realPaymentService.notifyPaymentComplete({
         contentId: transaction.contentId,
         transactionHash: transaction.transactionHash,
-        userIdentifier: `recovered_${transaction.walletAddress}`,
+        userIdentifier: transaction.walletAddress,
         amount: transaction.price,
         currency: transaction.currency,
         network: transaction.network,
       });
 
-      // 保存到本地存储
-      const unlockRecord = {
-        contentId: transaction.contentId,
-        transactionHash: transaction.transactionHash,
-        walletAddress: transaction.walletAddress,
-        price: transaction.price,
-        currency: transaction.currency,
-        network: transaction.network,
-        unlockedAt: Date.now(), // 使用确认时间而不是提交时间
-      };
-
-      anonymousUnlockService.saveLocalUnlock(unlockRecord);
+      // 钱包用户的购买记录已通过登录系统自动保存，无需本地存储
       console.log(`✅ 交易确认成功: ${transaction.transactionHash}`);
 
       // 触发页面刷新以更新UI状态

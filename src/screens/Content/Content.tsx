@@ -18,8 +18,6 @@ import profileDefaultAvatar from "../../assets/images/profile-default.svg";
 import { DEMO_PREMIUM_CONTENT, PremiumContentDemo } from "../../data/premiumContentDemo";
 import { unlockedContentService } from "../../services/unlockedContentService";
 import { PaymentModal, PaymentContent } from "../../components/ui/PaymentModal";
-import { UnlockRecoveryModal } from "../../components/ui/UnlockRecoveryModal";
-import { anonymousUnlockService } from "../../services/anonymousUnlockService";
 import { backgroundMonitorService } from "../../services/backgroundMonitorService";
 
 
@@ -61,7 +59,6 @@ export const Content = (): JSX.Element => {
   const [premiumContent, setPremiumContent] = useState<PremiumContentDemo | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentContent, setPaymentContent] = useState<PaymentContent | null>(null);
-  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
 
   // 检测是否为付费内容
   const isPremiumContentId = id && id.startsWith('premium-demo-');
@@ -98,7 +95,7 @@ export const Content = (): JSX.Element => {
       if (contentId === id && isPremiumContentId) {
         const foundContent = DEMO_PREMIUM_CONTENT.find(content => content.id === id);
         if (foundContent) {
-          const isUnlocked = anonymousUnlockService.isContentUnlocked(id, user?.id?.toString());
+          const isUnlocked = unlockedContentService.isContentUnlocked(id, user?.id?.toString());
           setPremiumContent({ ...foundContent, isUnlocked });
           showToast('🎉 内容解锁成功！', 'success');
         }
@@ -350,21 +347,6 @@ export const Content = (): JSX.Element => {
       userIdentifier
     );
 
-    // 同时使用新的匿名解锁服务（支持更多功能）
-    if (!user) {
-      // 模拟获取钱包地址
-      const walletAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
-
-      anonymousUnlockService.saveLocalUnlock({
-        contentId: paymentContent.id,
-        transactionHash,
-        walletAddress,
-        price: paymentContent.price,
-        currency: paymentContent.currency,
-        network: paymentContent.network,
-        unlockedAt: Date.now()
-      });
-    }
 
     // 更新本地状态
     setPremiumContent(prev => prev ? { ...prev, isUnlocked: true } : null);
@@ -582,15 +564,6 @@ export const Content = (): JSX.Element => {
                   </span>
                 </button>
 
-                {/* 已购买恢复链接 - 只在未解锁时显示 */}
-                {!premiumContent.isUnlocked && (
-                  <button
-                    onClick={() => setIsRecoveryModalOpen(true)}
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                  >
-                    已购买？恢复解锁状态
-                  </button>
-                )}
               </div>
             ) : (
               // 普通内容显示访问按钮
@@ -625,19 +598,6 @@ export const Content = (): JSX.Element => {
           />
         )}
 
-        {/* Unlock Recovery Modal for Anonymous Users */}
-        {premiumContent && (
-          <UnlockRecoveryModal
-            isOpen={isRecoveryModalOpen}
-            contentId={premiumContent.id}
-            contentTitle={premiumContent.title}
-            onClose={() => setIsRecoveryModalOpen(false)}
-            onRecoverySuccess={() => {
-              // 恢复成功后重新检查解锁状态
-              setPremiumContent(prev => prev ? { ...prev, isUnlocked: true } : null);
-            }}
-          />
-        )}
       </div>
     </div>
   );
